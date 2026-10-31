@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="מפת עמדות סריקת שבבים לכלבים בישראל. מצאו עמדת סריקה חינמית ונווטו אליה.">
+  <meta name="description" content="מפת עמדות סריקת שבבים לכלבים בישראל. מצאו עמדת סריקה קרובה אליכם ללא עלות.">
   <title>עמדות סריקת שבבים לכלבים בישראל</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -22,7 +22,7 @@
     header {
       background: #e2eee4;
       text-align: center;
-      padding: 28px 15px;
+      padding: 26px 15px;
     }
 
     h1 {
@@ -30,47 +30,63 @@
       margin: 0 0 12px;
     }
 
-    p {
-      line-height: 1.6;
-      margin: 0;
+    p { line-height: 1.6; margin: 0; }
+
+    .controls {
+      padding: 18px 15px;
+      text-align: center;
     }
 
-    .info {
-      text-align: center;
-      padding: 14px;
-      font-size: 15px;
+    button {
+      background: #366b4c;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 22px;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    #status {
+      margin-top: 12px;
+      font-size: 14px;
+      line-height: 1.6;
     }
 
     #map {
       width: 100%;
-      height: 65vh;
+      height: 60vh;
       min-height: 350px;
       z-index: 1;
     }
 
     .station {
-      line-height: 1.8;
       min-width: 190px;
+      line-height: 1.8;
       text-align: right;
     }
 
-    .station p {
-      margin-top: 8px;
-    }
+    .station p { margin-top: 7px; }
 
     .station a {
       display: inline-block;
       background: #366b4c;
       color: white;
+      text-decoration: none;
       padding: 9px 14px;
       border-radius: 8px;
-      text-decoration: none;
       margin-top: 12px;
     }
 
     footer {
-      text-align: center;
       padding: 22px 12px;
+      text-align: center;
       font-size: 14px;
     }
   </style>
@@ -80,14 +96,16 @@
 
   <header>
     <h1>🐾 עמדות סריקת שבבים</h1>
-    <p>
-      מצאתם כלב? מצאו עמדת סריקה קרובה אליכם,
-      ללא עלות.
-    </p>
+    <p>מצאתם כלב? מצאו עמדת סריקה קרובה אליכם, ללא עלות.</p>
   </header>
 
-  <div class="info">
-    📍 לחצו על הסימון במפה לפרטים ולניווט לעמדה
+  <div class="controls">
+    <button id="findNearest" type="button">
+      📍 מצא עמדה קרובה אליי
+    </button>
+    <p id="status" role="status" aria-live="polite">
+      או לחצו על הסימון במפה לפרטים ולניווט
+    </p>
   </div>
 
   <div id="map"></div>
@@ -111,8 +129,7 @@
     ];
 
     const map = L.map('map').setView(
-      [32.4270709, 34.9541563],
-      15
+      [32.4270709, 34.9541563], 15
     );
 
     L.tileLayer(
@@ -123,8 +140,9 @@
       }
     ).addTo(map);
 
-    stations.forEach(station => {
+    const markers = [];
 
+    stations.forEach(station => {
       const marker = L.marker([
         station.lat,
         station.lng
@@ -146,34 +164,117 @@
       price.textContent = '🤍 ' + station.price;
 
       const link = document.createElement('a');
-
       link.href =
-        'https://www.google.com/maps/dir/?api=1&destination='
-        + station.lat + ',' + station.lng;
-
+        'https://www.google.com/maps/dir/?api=1&destination=' +
+        encodeURIComponent(station.lat + ',' + station.lng);
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.textContent = '📍 ניווט לעמדה';
 
-      box.append(
-        title,
-        address,
-        hours,
-        price,
-        link
-      );
-
+      box.append(title, address, hours, price, link);
       marker.bindPopup(box);
 
+      markers.push({ station, marker });
     });
 
-    if (stations.length === 1) {
-      map.eachLayer(layer => {
-        if (layer instanceof L.Marker) {
-          layer.openPopup();
-        }
-      });
+    if (markers.length === 1) {
+      markers[0].marker.openPopup();
     }
+
+    function distanceKm(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const rad = Math.PI / 180;
+      const dLat = (lat2 - lat1) * rad;
+      const dLng = (lng2 - lng1) * rad;
+
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * rad) *
+        Math.cos(lat2 * rad) *
+        Math.sin(dLng / 2) ** 2;
+
+      return 2 * R * Math.asin(
+        Math.min(1, Math.sqrt(a))
+      );
+    }
+
+    const button = document.getElementById('findNearest');
+    const status = document.getElementById('status');
+
+    button.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        status.textContent =
+          'המכשיר אינו תומך באיתור מיקום.';
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = 'מחפשים עמדה קרובה אליכם...';
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          button.disabled = false;
+
+          const userLat = position.coords.latitude;
+          const userLng = position.coords.longitude;
+
+          if (markers.length === 0) {
+            status.textContent =
+              'עדיין לא נוספו עמדות למפה.';
+            return;
+          }
+
+          let nearest = null;
+          let shortest = Infinity;
+
+          markers.forEach(item => {
+            const distance = distanceKm(
+              userLat,
+              userLng,
+              item.station.lat,
+              item.station.lng
+            );
+
+            if (distance < shortest) {
+              shortest = distance;
+              nearest = item;
+            }
+          });
+
+          map.setView([
+            nearest.station.lat,
+            nearest.station.lng
+          ], 16);
+
+          nearest.marker.openPopup();
+
+          status.textContent =
+            'העמדה הקרובה ביותר ברשימה: ' +
+            nearest.station.name +
+            ' (כ־' + shortest.toFixed(1) +
+            ' ק״מ בקו אווירי).';
+        },
+        error => {
+          button.disabled = false;
+
+          if (error.code === 1) {
+            status.textContent =
+              'כדי למצוא עמדה קרובה, יש לאשר גישה למיקום.';
+          } else if (error.code === 3) {
+            status.textContent =
+              'איתור המיקום נמשך זמן רב מדי. נסו שוב.';
+          } else {
+            status.textContent =
+              'לא הצלחנו לאתר את המיקום. אפשר להשתמש במפה ידנית.';
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 60000
+        }
+      );
+    });
   </script>
 
 </body>
